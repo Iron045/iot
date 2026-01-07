@@ -9,156 +9,108 @@
 #include <Keypad.h>
 #include <DHT.h>
 
+// ================= WIFI =================
 const char ssid[] = "Redmi Note";
 const char pass[] = "1234567890";
 
-// --- 1. CẤU HÌNH LCD 16x2 ---
+// ================= LCD =================
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
-// --- 2. CẤU HÌNH MẬT KHẨU & TRẠNG THÁI ---
+// ================= PASSWORD =================
 const String MASTER_PASS = "1234";
 String inputPassword = "";
 
-// Các biến trạng thái hệ thống
+// ================= STATE =================
 bool manualPumpState = false;
 bool isAuthMode = false;
 bool isMenuMode = false;
 bool stopAlarm = false;
 
-// Biến cho Slide Show
+// Slide show
 int currentPage = 0;
 unsigned long lastPageSwitch = 0;
-const int PAGE_DELAY = 3500;
+const int PAGE_DELAY = 3000;
 
-// --- 3. CẤU HÌNH CẢM BIẾN ---
-#define PIN_DHT_IN 34
+// ================= SENSOR =================
+#define PIN_DHT_IN 33
 #define PIN_DHT_OUT 25
 #define DHTTYPE DHT11
 DHT dhtIn(PIN_DHT_IN, DHTTYPE);
 DHT dhtOut(PIN_DHT_OUT, DHTTYPE);
 
-// Đo xăng (Siêu âm)
+// Ultrasonic fuel
 #define TRIG_PIN 32
 #define ECHO_PIN 35
-const int H_BE_CAN = 100;  // cm (Bể cạn)
-const int H_BE_DAY = 5;    // cm (Bể đầy)
+const int H_BE_CAN = 100;
+const int H_BE_DAY = 5;
 int currentFuelPct = 0;
 
 #define MQ2_PIN 34
 #define PIR_PIN 39
 
-const int GAS_LIMIT = 1000;
+const int GAS_LIMIT = 800;
 const int TEMP_LIMIT = 55;
 
-// --- 4. OUTPUT ---
+// ================= OUTPUT =================
 #define RELAY_PIN 23
 #define BUZZER_PIN 26
 #define RED_LED 27
 #define GREEN_LED 14
 
-
-// --- 5. KEYPAD 4x3 ---
+// ================= KEYPAD =================
 const byte ROWS = 4;
 const byte COLS = 3;
 char keys[ROWS][COLS] = {
-  { '1', '2', '3' },
-  { '4', '5', '6' },
-  { '7', '8', '9' },
-  { '*', '0', '#' }
+  {'1','2','3'},
+  {'4','5','6'},
+  {'7','8','9'},
+  {'*','0','#'}
 };
-byte rowPins[ROWS] = { 15, 4, 16, 17 };
-byte colPins[COLS] = { 5, 18, 19 };
+byte rowPins[ROWS] = {15, 4, 16, 17};
+byte colPins[COLS] = {5, 18, 19};
 Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
-// --- BIẾN HỆ THỐNG ---
-bool isFireDanger = false;  // Biến báo CHÁY
-bool isIntruder = false;    // Biến báo CÓ NGƯỜI
+// ================= SYSTEM =================
+bool isFireDanger = false;
+bool isIntruder = false;
 unsigned long lastSensorTime = 0;
 
+// ================= ERA =================
 WiFiClient mbTcpClient;
 
-#if defined(ERA_AUTOMATION)
-#include <Automation/ERaSmart.hpp>
-
-#if defined(ESP32) || defined(ESP8266)
-#include <Time/ERaEspTime.hpp>
-ERaEspTime syncTime;
-#else
-#define USE_BASE_TIME
-#include <Time/ERaBaseTime.hpp>
-ERaBaseTime syncTime;
-#endif
-
-ERaSmart smart(ERa, syncTime);
-#endif
-
-ERA_CONNECTED() {
-  ERA_LOG(ERA_PSTR("ERa"), ERA_PSTR("ERa connected!"));
-}
-
-ERA_DISCONNECTED() {
-  ERA_LOG(ERA_PSTR("ERa"), ERA_PSTR("ERa disconnected!"));
-}
-
-void timerEvent() {
-  ERA_LOG(ERA_PSTR("Timer"), ERA_PSTR("Uptime: %d"), ERaMillis() / 1000L);
-}
-
-#if defined(USE_BASE_TIME)
-unsigned long getTimeCallback() {
-  return 0;
-}
-#endif
-
-// ===== ERA INPUT VIRTUAL PINS =====
-
-// V6 – Điều khiển máy bơm
+// ================= ERA VIRTUAL =================
 ERA_WRITE(V6) {
   manualPumpState = param.getInt();
-
-  // Không cho app tắt bơm khi đang cháy mà chưa tắt còi
-  if (!isFireDanger || stopAlarm) {
+  if (!isFireDanger || stopAlarm)
     digitalWrite(RELAY_PIN, manualPumpState ? HIGH : LOW);
-  }
 }
 
-// V7 – Tắt / bật còi tạm thời
 ERA_WRITE(V7) {
   stopAlarm = param.getInt();
-
-  if (stopAlarm) {
-    digitalWrite(BUZZER_PIN, LOW);
-  }
+  if (stopAlarm) digitalWrite(BUZZER_PIN, LOW);
 }
 
-
+// ================= SETUP =================
 void setup() {
-#if defined(ERA_DEBUG)
   Serial.begin(115200);
-#endif
-
-#if defined(USE_BASE_TIME)
-  syncTime.setGetTimeCallback(getTimeCallback);
-#endif
+  Serial.println("\n===== HE THONG KHOI DONG =====");
 
   ERa.setModbusClient(mbTcpClient);
   ERa.setScanWiFi(true);
   ERa.begin(ssid, pass);
-  ERa.addInterval(1000L, timerEvent);
-
-  Serial.begin(115200);
 
   lcd.init();
   lcd.backlight();
-  lcd.setCursor(0, 0);
+  lcd.setCursor(0,0);
   lcd.print("HE THONG");
-  lcd.setCursor(0, 1);
+  lcd.setCursor(0,1);
   lcd.print("KHOI DONG...");
   delay(2000);
   lcd.clear();
 
   dhtIn.begin();
   dhtOut.begin();
+
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
   pinMode(MQ2_PIN, INPUT);
@@ -173,250 +125,215 @@ void setup() {
   digitalWrite(GREEN_LED, HIGH);
 }
 
+// ================= LOOP =================
 void loop() {
   ERa.run();
-  // 1. Quét phím
+
   char key = keypad.getKey();
   if (key) {
     xuLyBanPhim(key);
-    hienThiGiaoDien();
+    hienThiLCD();
   }
 
-  // 2. Quét cảm biến (0.5s/lần)
   if (millis() - lastSensorTime > 1500) {
     lastSensorTime = millis();
     docCamBienVaXuLy();
-    if (!isAuthMode && !isMenuMode) hienThiGiaoDien();
+    hienThiLCD();
+    hienThiSerial();
   }
 
-  // 3. Xử lý lật trang (Chỉ khi không báo động)
-  if (!isAuthMode && !isMenuMode && !isFireDanger && !isIntruder && millis() - lastPageSwitch > PAGE_DELAY) {
+  if (!isMenuMode && !isAuthMode && !isFireDanger && !isIntruder &&
+      millis() - lastPageSwitch > PAGE_DELAY) {
     lastPageSwitch = millis();
-    currentPage++;
-    if (currentPage > 2) currentPage = 0;
-    hienThiGiaoDien();
+    currentPage = (currentPage + 1) % 3;
+    hienThiLCD();
   }
 }
 
-// --- HÀM ĐO XĂNG ---
+// ================= FUEL =================
 int docPhanTramXang() {
   long duration;
-  float totalDistance = 0;
-  int samples = 5;
-  for (int i = 0; i < samples; i++) {
-    digitalWrite(TRIG_PIN, LOW);
-    delayMicroseconds(2);
-    digitalWrite(TRIG_PIN, HIGH);
-    delayMicroseconds(10);
+  float total = 0;
+  for (int i = 0; i < 5; i++) {
+    digitalWrite(TRIG_PIN, LOW); delayMicroseconds(2);
+    digitalWrite(TRIG_PIN, HIGH); delayMicroseconds(10);
     digitalWrite(TRIG_PIN, LOW);
     duration = pulseIn(ECHO_PIN, HIGH, 30000);
-    if (duration == 0) totalDistance += H_BE_CAN;
-    else totalDistance += (duration * 0.034 / 2);
+    total += (duration == 0) ? H_BE_CAN : (duration * 0.034 / 2);
     delay(5);
   }
-  int pct = map((long)(totalDistance / samples), H_BE_CAN, H_BE_DAY, 0, 100);
+  int pct = map(total / 5, H_BE_CAN, H_BE_DAY, 0, 100);
   return constrain(pct, 0, 100);
 }
 
+// ================= KEYPAD =================
 void xuLyBanPhim(char key) {
+  Serial.print("Phim: "); Serial.println(key);
+
   if (isMenuMode) {
-    if (key == '1') {
-    stopAlarm = !stopAlarm;
-    ERa.virtualWrite(V7, stopAlarm);   // Đồng bộ app
-  }
-    else if (key == '2') {
-      manualPumpState = !manualPumpState;
-      ERa.virtualWrite(V6, manualPumpState);
-      // Chỉ cho phép điều khiển bơm nếu không cháy (hoặc cháy mà đã tắt cảnh báo)
-      if (!isFireDanger || (isFireDanger && stopAlarm)) {
-        digitalWrite(RELAY_PIN, manualPumpState ? HIGH : LOW);
-      }
-    } else if (key == '#') {
-      isMenuMode = false;
-      lcd.clear();
-    }
+    if (key == '1') stopAlarm = !stopAlarm;
+    else if (key == '2') manualPumpState = !manualPumpState;
+    else if (key == '#') isMenuMode = false;
     return;
   }
 
   if (key == '*') {
     isAuthMode = true;
     inputPassword = "";
-    lcd.clear();
-  } else if (key == '#') {
+  }
+  else if (key == '#') {
     isAuthMode = false;
     inputPassword = "";
-    lcd.clear();
-  } else if (isAuthMode) {
-    if (inputPassword.length() < 4) inputPassword += key;
+  }
+  else if (isAuthMode) {
+    inputPassword += key;
     if (inputPassword.length() == 4) kiemTraMatKhau();
   }
 }
 
 void kiemTraMatKhau() {
   if (inputPassword == MASTER_PASS) {
-    isAuthMode = false;
     isMenuMode = true;
-    inputPassword = "";
-    lcd.clear();
+    Serial.println(">> DUNG MAT KHAU");
   } else {
-    lcd.clear();
-    lcd.print("SAI MAT KHAU!");
+    Serial.println(">> SAI MAT KHAU");
     digitalWrite(BUZZER_PIN, HIGH);
-    delay(200);
+    delay(300);
     digitalWrite(BUZZER_PIN, LOW);
-    delay(1000);
-    isAuthMode = false;
-    inputPassword = "";
-    lcd.clear();
   }
+  isAuthMode = false;
+  inputPassword = "";
 }
 
+// ================= SENSOR & LOGIC =================
 void docCamBienVaXuLy() {
   float tIn = dhtIn.readTemperature();
   float tOut = dhtOut.readTemperature();
-  if (isnan(tIn)) tIn = 0;
-  if (isnan(tOut)) tOut = 0;
-  int gasValue = analogRead(MQ2_PIN);
-  currentFuelPct = docPhanTramXang();
-
-  // Đọc cảm biến PIR
+  int gas = analogRead(MQ2_PIN);
   bool motion = digitalRead(PIR_PIN);
 
-  // LOGIC XÁC ĐỊNH TRẠNG THÁI
-  if (gasValue > GAS_LIMIT || tIn > TEMP_LIMIT || tOut > TEMP_LIMIT) {
+  currentFuelPct = docPhanTramXang();
+
+  if (gas > GAS_LIMIT || tIn > TEMP_LIMIT || tOut > TEMP_LIMIT) {
     isFireDanger = true;
-    isIntruder = false;  // Ưu tiên báo cháy hơn báo trộm
+    isIntruder = false;
   } else if (motion) {
     isFireDanger = false;
-    isIntruder = true;  // Phát hiện có người
+    isIntruder = true;
   } else {
     isFireDanger = false;
     isIntruder = false;
   }
 
-  // --- XỬ LÝ OUTPUT ---
-
-  // 1. NẾU CÓ CHÁY
   if (isFireDanger) {
-    if (stopAlarm) {
-      digitalWrite(BUZZER_PIN, LOW);                          // Tắt còi theo yêu cầu
-      digitalWrite(RELAY_PIN, manualPumpState ? HIGH : LOW);  // Bơm theo manual
-    } else {
-      digitalWrite(BUZZER_PIN, HIGH);  // Hú còi
-      digitalWrite(RELAY_PIN, HIGH);   // ÉP BẬT BƠM
-    }
+    digitalWrite(RELAY_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, stopAlarm ? LOW : HIGH);
     digitalWrite(RED_LED, HIGH);
     digitalWrite(GREEN_LED, LOW);
   }
-  // 2. NẾU CÓ NGƯỜI (NHƯNG KHÔNG CHÁY)
   else if (isIntruder) {
-    if (stopAlarm) {
-      digitalWrite(BUZZER_PIN, LOW);  // Tắt còi theo yêu cầu
-    } else {
-      digitalWrite(BUZZER_PIN, HIGH);  // Hú còi cảnh báo
-    }
-    digitalWrite(RELAY_PIN, manualPumpState ? HIGH : LOW);  // Bơm giữ nguyên (KHÔNG TỰ BẬT)
-    digitalWrite(RED_LED, HIGH);                            // Đèn đỏ cảnh báo
+    digitalWrite(RELAY_PIN, manualPumpState ? HIGH : LOW);
+    digitalWrite(BUZZER_PIN, stopAlarm ? LOW : HIGH);
+    digitalWrite(RED_LED, HIGH);
     digitalWrite(GREEN_LED, LOW);
   }
-  // 3. BÌNH THƯỜNG
   else {
-    stopAlarm = false;  // Reset trạng thái tắt còi
+    stopAlarm = false;
     digitalWrite(RELAY_PIN, manualPumpState ? HIGH : LOW);
+    digitalWrite(BUZZER_PIN, LOW);
     digitalWrite(RED_LED, LOW);
     digitalWrite(GREEN_LED, HIGH);
-    digitalWrite(BUZZER_PIN, LOW);
   }
-    // ===== ERA OUTPUT VIRTUAL PINS =====
-  ERa.virtualWrite(V0, tIn);              // Nhiệt độ trong
-  ERa.virtualWrite(V1, tOut);             // Nhiệt độ ngoài
-  ERa.virtualWrite(V2, gasValue);         // MQ2
-  ERa.virtualWrite(V3, currentFuelPct);   // % xăng
 
-  ERa.virtualWrite(V4, isFireDanger ? 1 : 0); // Cháy
-  ERa.virtualWrite(V5, isIntruder ? 1 : 0);   // Có người
-
+  ERa.virtualWrite(V0, tIn);
+  ERa.virtualWrite(V1, tOut);
+  ERa.virtualWrite(V2, gas);
+  ERa.virtualWrite(V3, currentFuelPct);
+  ERa.virtualWrite(V4, isFireDanger);
+  ERa.virtualWrite(V5, isIntruder);
 }
 
-void hienThiGiaoDien() {
-  // 1. MENU
+// ================= LCD =================
+void hienThiLCD() {
+  lcd.clear();
+
   if (isMenuMode) {
-    lcd.setCursor(0, 0);
-    lcd.print("1.CanhBao:");
-    lcd.print(stopAlarm ? "OFF " : "ON  ");
-    lcd.setCursor(0, 1);
+    lcd.setCursor(0,0);
+    lcd.print("1.Coi:");
+    lcd.print(stopAlarm ? "OFF" : "ON ");
+    lcd.setCursor(0,1);
     lcd.print("2.Bom:");
     lcd.print(manualPumpState ? "ON " : "OFF");
-    lcd.print("  #.Thoat");
     return;
   }
-  // 2. PASSWORD
+
   if (isAuthMode) {
-    lcd.setCursor(0, 0);
-    lcd.print("NHAP MAT KHAU:  ");
-    lcd.setCursor(0, 1);
+    lcd.setCursor(0,0);
+    lcd.print("NHAP MAT KHAU");
+    lcd.setCursor(0,1);
     lcd.print(inputPassword);
-    lcd.print("_               ");
     return;
   }
 
-  // 3. BÁO ĐỘNG CHÁY (Ưu tiên cao nhất)
   if (isFireDanger) {
-    lcd.setCursor(0, 0);
-    if (stopAlarm) lcd.print("!! DA TAT COI !!");
-    else lcd.print("!! NGUY HIEM !! ");
-    lcd.setCursor(0, 1);
-    lcd.print("GAS/NHIET CAO!  ");
+    lcd.setCursor(0,0);
+    lcd.print("!! NGUY HIEM !!");
+    lcd.setCursor(0,1);
+    lcd.print("CHAY/GAS CAO");
     return;
   }
 
-  // 4. BÁO ĐỘNG NGƯỜI (Ưu tiên nhì)
   if (isIntruder) {
-    lcd.setCursor(0, 0);
-    if (stopAlarm) lcd.print("!! DA TAT COI !!");
-    else lcd.print("!! CANH BAO !!  ");
-    lcd.setCursor(0, 1);
-    lcd.print("CO NGUOI LAI GAN");  // Thông báo xâm nhập
+    lcd.setCursor(0,0);
+    lcd.print("!! CANH BAO !!");
+    lcd.setCursor(0,1);
+    lcd.print("CO NGUOI!");
     return;
   }
-
-  // 5. SLIDE SHOW BÌNH THƯỜNG
-  float tIn = dhtIn.readTemperature();
-  float tOut = dhtOut.readTemperature();
-  int gas = analogRead(MQ2_PIN);
 
   switch (currentPage) {
     case 0:
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("T.In: ");
-      lcd.print((int)tIn);
-      lcd.print("C       ");
-      lcd.setCursor(0, 1);
+      lcd.setCursor(0,0);
+      lcd.print("T.In:");
+      lcd.print((int)dhtIn.readTemperature());
+      lcd.print("C");
+      lcd.setCursor(0,1);
       lcd.print("T.Out:");
-      lcd.print((int)tOut);
-      lcd.print("C       ");
+      lcd.print((int)dhtOut.readTemperature());
+      lcd.print("C");
       break;
+
     case 1:
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("Gas: ");
-      lcd.print(gas);
-      lcd.print("    ");
-      lcd.setCursor(0, 1);
-      lcd.print("Xang: ");
+      lcd.setCursor(0,0);
+      lcd.print("Gas:");
+      lcd.print(analogRead(MQ2_PIN));
+      lcd.setCursor(0,1);
+      lcd.print("Xang:");
       lcd.print(currentFuelPct);
-      lcd.print("%   ");
+      lcd.print("%");
       break;
+
     case 2:
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("An ninh: ");
-      lcd.print("AN TOAN ");
-      lcd.setCursor(0, 1);
-      lcd.print("Bom: ");
-      if (manualPumpState) lcd.print("ON (Manual)");
-      else lcd.print("OFF       ");
+      lcd.setCursor(0,0);
+      lcd.print("Bom:");
+      lcd.print(manualPumpState ? "ON " : "OFF");
+      lcd.setCursor(0,1);
+      lcd.print("Trang thai OK");
       break;
   }
 }
+
+// ================= SERIAL =================
+void hienThiSerial() {
+  Serial.println("\n===== TRANG THAI =====");
+  Serial.print("T.In  : "); Serial.println(dhtIn.readTemperature());
+  Serial.print("T.Out : "); Serial.println(dhtOut.readTemperature());
+  Serial.print("Gas   : "); Serial.println(analogRead(MQ2_PIN));
+  Serial.print("Xang  : "); Serial.print(currentFuelPct); Serial.println("%");
+  Serial.print("Chay  : "); Serial.println(isFireDanger ? "YES" : "NO");
+  Serial.print("Nguoi : "); Serial.println(isIntruder ? "YES" : "NO");
+  Serial.print("Bom   : "); Serial.println(manualPumpState ? "ON" : "OFF");
+  Serial.print("CoiOff: "); Serial.println(stopAlarm ? "YES" : "NO");
+}
+
+
